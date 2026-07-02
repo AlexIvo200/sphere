@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b0f1a" />
+  <meta name="description" content="Кредо — ежедневник инвестора: должники, проекты, напоминания и консьерж." />
+  <title>Кредо · ежедневник инвестора</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%BC%3C/text%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%BC%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Онбординг / регистрация инвестора -->
+  <section id="onboarding" class="onboarding hidden">
+    <div class="onboarding__card">
+      <div class="onboarding__logo">💼</div>
+      <h1>Кредо</h1>
+      <p class="muted">Личный ежедневник инвестора. Все данные — только на твоём устройстве.</p>
+      <label class="field">
+        <span>Как тебя зовут?</span>
+        <input id="ob-name" type="text" placeholder="Например, Артём" autocomplete="name" />
+      </label>
+      <label class="field">
+        <span>Основная валюта</span>
+        <select id="ob-currency">
+          <option value="₽">₽ рубль</option>
+          <option value="$">$ доллар</option>
+          <option value="€">€ евро</option>
+          <option value="₸">₸ тенге</option>
+          <option value="грн">₴ гривна</option>
+        </select>
+      </label>
+      <button id="ob-start" class="btn btn--primary btn--block">Начать</button>
+    </div>
+  </section>
+
+  <!-- Основное приложение -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar__hi">
+        <span class="muted">Привет,</span>
+        <strong id="hi-name">инвестор</strong>
+      </div>
+      <button id="btn-settings" class="icon-btn" title="Настройки">⚙️</button>
+    </header>
+
+    <main id="view" class="view"><!-- сюда рендерятся экраны --></main>
+
+    <nav class="tabbar">
+      <button class="tab is-active" data-tab="home">🏠<span>Главная</span></button>
+      <button class="tab" data-tab="debtors">📇<span>Должники</span></button>
+      <button class="tab tab--add" data-tab="add">＋</button>
+      <button class="tab" data-tab="projects">💼<span>Проекты</span></button>
+      <button class="tab" data-tab="reminders">🔔<span>Сроки</span></button>
+    </nav>
+  </div>
+
+  <!-- Контейнер модалок -->
+  <div id="modal-root"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
