@@ -134,6 +134,7 @@ function startApp() {
     });
   });
   render();
+  remindOnOpen();
 }
 
 function render() {
@@ -153,6 +154,19 @@ function renderHome(view) {
   const overdueSum = overdue.reduce((s, d) => s + remainOf(d), 0);
   const invested = state.projects.reduce((s, p) => s + p.invested, 0);
   const soon = active.filter(d => statusOf(d) === 'soon').length;
+
+  // Голосовой ввод — главный вход
+  const voiceCard = el(`
+    <button class="voice-cta" id="home-voice">
+      <span class="voice-cta__mic">🎤</span>
+      <span class="voice-cta__text">
+        <strong>Записать голосом</strong>
+        <span class="muted">«Иван должен 100 тысяч к 1 июня…»</span>
+      </span>
+    </button>
+  `);
+  voiceCard.addEventListener('click', openVoiceModal);
+  view.appendChild(voiceCard);
 
   view.appendChild(el(`
     <div class="stat-grid">
@@ -174,6 +188,22 @@ function renderHome(view) {
       </div>
     </div>
   `));
+
+  // График возвратов: возвращено / осталось / просрочено
+  const paidTotal = state.debtors.reduce((s, d) => s + paidOf(d), 0);
+  const remainNotOverdue = active.filter(d => statusOf(d) !== 'overdue').reduce((s, d) => s + remainOf(d), 0);
+  if (paidTotal + totalOwed > 0) {
+    const chart = el(`<div class="card" style="margin-top:14px">
+      <div class="row__sub" style="margin-bottom:10px">Деньги в обороте</div>
+      <div id="home-bar"></div>
+    </div>`);
+    view.appendChild(chart);
+    drawStackedBar($('#home-bar', chart), [
+      { label: 'Возвращено', value: paidTotal, color: getColor('--green') },
+      { label: 'Ждём возврата', value: remainNotOverdue, color: getColor('--primary') },
+      { label: 'Просрочено', value: overdueSum, color: getColor('--red') },
+    ]);
+  }
 
   // Кого напомнить в первую очередь
   const priority = [...active].sort((a, b) => {
@@ -257,6 +287,16 @@ function renderProjects(view) {
     view.appendChild(emptyBlock('💼', 'Проектов нет', 'Добавь проект, в который вложился'));
     return;
   }
+
+  // Донат: распределение вложений по проектам
+  const invItems = state.projects.filter(p => p.invested > 0)
+    .map((p, i) => ({ label: p.name, value: p.invested, color: PALETTE[i % PALETTE.length] }));
+  if (invItems.length) {
+    const chart = el(`<div class="card" style="margin-top:12px"><div class="row__sub" style="margin-bottom:8px">Куда вложено</div><div id="proj-donut"></div></div>`);
+    view.appendChild(chart);
+    drawDonut($('#proj-donut', chart), invItems);
+  }
+
   const list = el(`<div class="list" style="margin-top:12px"></div>`);
   state.projects.forEach(p => {
     const owed = state.debtors.filter(d => d.projectId === p.id).reduce((s, d) => s + remainOf(d), 0);
@@ -540,6 +580,9 @@ function openSettings() {
       ${['₽','$','€','₸','грн'].map(c => `<option ${c === cur() ? 'selected' : ''}>${c}</option>`).join('')}
     </select></label>
     <button class="btn btn--primary btn--block" id="s-save">Сохранить</button>
+    <div class="section-title">Напоминания</div>
+    <button class="btn btn--block" id="s-notify">${state.notify ? '🔔 Напоминания включены — выключить' : '🔔 Включить напоминания о сроках'}</button>
+    <p class="muted" style="font-size:12px;margin:6px 2px 0">При открытии приложения предупредим о просрочках и близких сроках.</p>
     <div class="section-title">Данные</div>
     <button class="btn btn--block" id="s-export">⬇️ Выгрузить резервную копию (JSON)</button>
     <button class="btn btn--block" id="s-import">⬆️ Загрузить из копии</button>
@@ -552,6 +595,10 @@ function openSettings() {
     if (nm) state.investor.name = nm;
     state.investor.currency = $('#s-cur', m).value;
     save(); $('#hi-name').textContent = state.investor.name; closeModal(); render(); toast('Сохранено');
+  });
+  $('#s-notify', m).addEventListener('click', async () => {
+    if (state.notify) { state.notify = false; save(); closeModal(); openSettings(); toast('Напоминания выключены'); }
+    else { const ok = await enableNotifications(); if (ok) { closeModal(); openSettings(); } }
   });
   $('#s-export', m).addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -582,6 +629,206 @@ function openSettings() {
       location.reload();
     }
   });
+}
+
+/* ================= ГОЛОСОВОЙ ВВОД ================= */
+function getSR() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+
+function openVoiceModal() {
+  const hasSR = !!getSR();
+  const m = openModal(`
+    <div class="modal__head"><h2>🎤 Голосом</h2></div>
+    <p class="muted">Расскажи одной фразой: кто должен, сколько, к какому сроку, по какому проекту и что должен сделать.</p>
+    <div class="mic-stage">
+      <button class="mic-orb" id="v-mic" title="Говорить">🎤</button>
+      <div class="mic-status muted" id="v-status">${hasSR ? 'Нажми на микрофон и говори' : 'Голос недоступен в этом браузере — впиши фразу вручную'}</div>
+    </div>
+    <label class="field"><span>Распознанный текст (можно поправить)</span>
+      <textarea id="v-text" placeholder="Например: Иван должен сто тысяч рублей к 1 июня по проекту Кофейня, обязался запустить точку"></textarea>
+    </label>
+    <button class="btn btn--primary btn--block" id="v-parse">Разобрать →</button>
+  `);
+
+  let rec = null, listening = false;
+  const statusEl = $('#v-status', m), textEl = $('#v-text', m), micBtn = $('#v-mic', m);
+
+  function stop() { listening = false; micBtn.classList.remove('is-live'); try { rec && rec.stop(); } catch (e) {} }
+
+  micBtn.addEventListener('click', () => {
+    const SR = getSR();
+    if (!SR) { statusEl.textContent = 'Голос недоступен — впиши фразу вручную'; textEl.focus(); return; }
+    if (listening) { stop(); statusEl.textContent = 'Остановлено'; return; }
+    rec = new SR();
+    rec.lang = 'ru-RU'; rec.interimResults = true; rec.continuous = true;
+    let base = textEl.value ? textEl.value + ' ' : '';
+    rec.onstart = () => { listening = true; micBtn.classList.add('is-live'); statusEl.textContent = 'Слушаю… говори'; };
+    rec.onerror = (e) => { statusEl.textContent = e.error === 'not-allowed' ? 'Нет доступа к микрофону' : 'Ошибка распознавания'; stop(); };
+    rec.onend = () => { if (listening) { try { rec.start(); } catch (e) { stop(); } } };
+    rec.onresult = (ev) => {
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) base += r[0].transcript + ' '; else interim += r[0].transcript;
+      }
+      textEl.value = (base + interim).trim();
+    };
+    try { rec.start(); } catch (e) { statusEl.textContent = 'Не удалось включить микрофон'; }
+  });
+
+  $('#v-parse', m).addEventListener('click', () => {
+    stop();
+    const text = textEl.value.trim();
+    if (!text) { toast('Скажи или впиши фразу'); return; }
+    const parsed = KredoParser.parseInvestment(text, new Date());
+    openVoiceConfirm(parsed);
+  });
+}
+
+function openVoiceConfirm(p) {
+  // подобрать существующий проект по имени
+  let projId = '';
+  if (p.project) {
+    const exist = state.projects.find(x => x.name.toLowerCase() === p.project.toLowerCase());
+    projId = exist ? exist.id : '__new__';
+  }
+  const projSelect = ['<option value="">— без проекта —</option>']
+    .concat(state.projects.map(x => `<option value="${x.id}" ${x.id === projId ? 'selected' : ''}>${esc(x.name)}</option>`))
+    .concat(projId === '__new__' ? `<option value="__new__" selected>➕ создать «${esc(p.project)}»</option>` : '')
+    .join('');
+  const curSel = p.currency || cur();
+
+  const m = openModal(`
+    <div class="modal__head"><h2>Проверь, всё верно?</h2></div>
+    <p class="muted">Мы разобрали фразу. Поправь, если что не так, и сохрани.</p>
+    <div class="recap">🗣️ «${esc(p.raw)}»</div>
+    <label class="field"><span>Кто должен</span><input id="c-name" value="${esc(p.name || '')}" placeholder="Имя" /></label>
+    <div class="field-row">
+      <label class="field"><span>Сумма</span><input id="c-amount" type="number" inputmode="decimal" value="${p.amount || ''}" /></label>
+      <label class="field"><span>Валюта</span><select id="c-cur">${['₽','$','€','₸','грн'].map(c => `<option ${c === curSel ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+    </div>
+    <label class="field"><span>Срок возврата</span><input id="c-due" type="date" value="${p.dueAt || ''}" /></label>
+    <label class="field"><span>Проект</span><select id="c-proj">${projSelect}</select></label>
+    <label class="field"><span>Что должен сделать / заметка</span><textarea id="c-note">${esc(p.task || '')}</textarea></label>
+    <button class="btn btn--primary btn--block" id="c-save">✅ Сохранить</button>
+    <button class="btn btn--ghost btn--block" id="c-back">← Переписать фразу</button>
+  `);
+
+  $('#c-back', m).addEventListener('click', openVoiceModal);
+  $('#c-save', m).addEventListener('click', () => {
+    const name = $('#c-name', m).value.trim();
+    if (!name) { toast('Впиши имя должника'); return; }
+    let projectId = $('#c-proj', m).value;
+    if (projectId === '__new__') {
+      const np = makeProject({ name: p.project });
+      state.projects.push(np);
+      projectId = np.id;
+    }
+    const chosenCur = $('#c-cur', m).value;
+    if (chosenCur && chosenCur !== cur()) state.investor.currency = chosenCur; // подстроим валюту профиля
+    state.debtors.push(makeDebtor({
+      name,
+      amount: $('#c-amount', m).value,
+      dueAt: $('#c-due', m).value,
+      projectId,
+      note: $('#c-note', m).value,
+    }));
+    save(); closeModal();
+    currentTab = 'debtors';
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('is-active', b.dataset.tab === 'debtors'));
+    render();
+    toast('Записано с голоса 🎉');
+  });
+}
+
+/* ================= ГРАФИКИ (canvas, без зависимостей) ================= */
+function getColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#888';
+}
+function setupCanvas(mount, w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  const c = document.createElement('canvas');
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  mount.innerHTML = ''; mount.appendChild(c);
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+function drawStackedBar(mount, items) {
+  const data = items.filter(i => i.value > 0);
+  const total = data.reduce((s, i) => s + i.value, 0);
+  if (!total) { mount.innerHTML = '<div class="muted">нет данных</div>'; return; }
+  const W = mount.clientWidth || 300, H = 18;
+  const ctx = setupCanvas(mount, W, H);
+  let x = 0;
+  data.forEach(i => {
+    const w = (i.value / total) * W;
+    ctx.fillStyle = i.color;
+    roundRect(ctx, x, 0, Math.max(w - 2, 1), H, 5); ctx.fill();
+    x += w;
+  });
+  const legend = el('<div class="legend"></div>');
+  data.forEach(i => legend.appendChild(el(
+    `<span class="legend__item"><span class="legend__dot" style="background:${i.color}"></span>${i.label}: ${fmt(i.value)}</span>`)));
+  mount.appendChild(legend);
+}
+function drawDonut(mount, items) {
+  const data = items.filter(i => i.value > 0);
+  const total = data.reduce((s, i) => s + i.value, 0);
+  if (!total) { mount.innerHTML = '<div class="muted">нет данных</div>'; return; }
+  const size = 160, r = 70, cx = size / 2, cy = size / 2;
+  const ctx = setupCanvas(mount, size, size);
+  let a = -Math.PI / 2;
+  data.forEach(i => {
+    const slice = (i.value / total) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a, a + slice); ctx.closePath();
+    ctx.fillStyle = i.color; ctx.fill();
+    a += slice;
+  });
+  ctx.beginPath(); ctx.arc(cx, cy, 42, 0, Math.PI * 2); ctx.fillStyle = getColor('--card'); ctx.fill();
+  ctx.fillStyle = getColor('--text'); ctx.textAlign = 'center'; ctx.font = '600 14px -apple-system, sans-serif';
+  ctx.fillText(fmt(total).replace(/\s/g, ' '), cx, cy + 5);
+  const legend = el('<div class="legend legend--col"></div>');
+  data.forEach(i => legend.appendChild(el(
+    `<span class="legend__item"><span class="legend__dot" style="background:${i.color}"></span>${esc(i.label)} · ${fmt(i.value)}</span>`)));
+  const wrap = el('<div class="donut-wrap"></div>');
+  wrap.appendChild(mount.firstChild); wrap.appendChild(legend);
+  mount.appendChild(wrap);
+}
+const PALETTE = ['#5b8cff', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#22d3ee', '#f472b6', '#facc15'];
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ================= НАПОМИНАНИЯ ================= */
+function remindOnOpen() {
+  if (!state.notify) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (state.lastNotify === todayISO()) return;
+  const active = state.debtors.filter(d => !isPaid(d));
+  const overdue = active.filter(d => statusOf(d) === 'overdue');
+  const soon = active.filter(d => statusOf(d) === 'soon');
+  if (!overdue.length && !soon.length) return;
+  const parts = [];
+  if (overdue.length) parts.push(`просрочено: ${overdue.length} (${fmt(overdue.reduce((s, d) => s + remainOf(d), 0))})`);
+  if (soon.length) parts.push(`скоро срок: ${soon.length}`);
+  try {
+    new Notification('Кредо · пора напомнить', { body: parts.join(' · '), tag: 'kredo-daily' });
+    state.lastNotify = todayISO(); save();
+  } catch (e) {}
+}
+async function enableNotifications() {
+  if (!('Notification' in window)) { toast('Уведомления не поддерживаются'); return false; }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') { state.notify = true; state.lastNotify = ''; save(); toast('Напоминания включены 🔔'); remindOnOpen(); return true; }
+  toast('Разрешение не выдано'); return false;
 }
 
 /* ---------- прочее ---------- */

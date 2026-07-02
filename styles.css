@@ -309,6 +309,61 @@ textarea { resize: vertical; min-height: 74px; }
 .dispatch__emoji { font-size: 64px; animation: bob 1s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
 
+/* ---------- Голосовой ввод ---------- */
+.voice-cta {
+  width: 100%;
+  display: flex; align-items: center; gap: 14px;
+  text-align: left;
+  background: linear-gradient(135deg, #21284a, #2a2150);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+.voice-cta__mic {
+  font-size: 24px;
+  width: 46px; height: 46px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: var(--primary);
+  border-radius: 50%;
+  box-shadow: 0 6px 16px rgba(91,140,255,.4);
+}
+.voice-cta__text { display: flex; flex-direction: column; line-height: 1.25; }
+.voice-cta__text strong { font-size: 16px; }
+.voice-cta__text .muted { font-size: 12px; }
+
+.mic-stage { text-align: center; padding: 10px 0 6px; }
+.mic-orb {
+  width: 92px; height: 92px; border-radius: 50%;
+  font-size: 38px; cursor: pointer;
+  background: var(--card-2); color: var(--text);
+  border: 1px solid var(--line);
+}
+.mic-orb.is-live {
+  background: var(--primary); border-color: var(--primary);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(91,140,255,.5); }
+  50% { box-shadow: 0 0 0 16px rgba(91,140,255,0); }
+}
+.mic-status { margin-top: 10px; font-size: 13px; }
+.recap {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px; font-size: 14px; font-style: italic;
+  color: var(--muted); margin: 4px 0 6px;
+}
+
+/* ---------- Графики ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
+.legend--col { flex-direction: column; gap: 8px; }
+.legend__item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.legend__dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.donut-wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.donut-wrap canvas { flex: 0 0 auto; }
+
 /* Тосты */
 .toast {
   position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);

@@ -1,9 +1,10 @@
 /* Простой офлайн-кэш для Кредо */
-const CACHE = 'kredo-v1';
+const CACHE = 'kredo-v2';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './parser.js',
   './app.js',
   './manifest.json',
 ];
