@@ -1,0 +1,14 @@
+{
+  "name": "sphere-empathy-exam",
+  "version": "1.0.0",
+  "description": "Сфера — экзамен на эмпатию для допуска в политику: слепая проверка консилиумом из 5 психологов из разных стран",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Сфера — экзамен на эмпатию для допуска в политику</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <div class="brand">
+        <span class="brand-mark">◉</span>
+        <div>
+          <h1>Сфера</h1>
+          <p class="tagline">Экзамен на эмпатию для допуска к государственной власти</p>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-view="about">О системе</button>
+        <button class="tab" data-view="candidate">Кандидату</button>
+        <button class="tab" data-view="reviewer">Консилиуму</button>
+        <button class="tab" data-view="registry">Реестр</button>
+        <button class="tab" data-view="status">Мой результат</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ============ О СИСТЕМЕ ============ -->
+    <section id="view-about" class="view active">
+      <div class="hero">
+        <h2>Власть — только тем, кто способен чувствовать других</h2>
+        <p class="lead">
+          История показывает: люди, лишённые эмпатии, приходя к власти, приносят хаос и боль.
+          «Сфера» — экзаменационный барьер на входе в политику, построенный на учениях
+          величайших психологов XX века.
+        </p>
+      </div>
+
+      <div class="cards" id="principles">
+        <div class="card">
+          <h3>📝 Свободное изложение</h3>
+          <p>Никаких «да/нет» и галочек. Кандидат пишет развёрнутые ответы на вопросы,
+          основанные на работах Роджерса, Гоулмана, Барон-Коэна, Колберга, Хоффмана,
+          Милгрэма, Хаэра и Адлера. Эссе невозможно пройти угадыванием — оно раскрывает
+          строй мышления.</p>
+        </div>
+        <div class="card">
+          <h3>🌍 Консилиум из 5 стран</h3>
+          <p>Система сама криптографически случайно отбирает пятерых психологов —
+          каждый из своей страны, и ни один из страны кандидата. Никто не знает состав
+          консилиума заранее, поэтому подкуп практически невозможен.</p>
+        </div>
+        <div class="card">
+          <h3>🕶 Слепая проверка</h3>
+          <p>Экзаменаторы видят только номер работы и текст ответов — без имени, партии
+          и страны кандидата. Оценки коллег скрыты до завершения всех пяти проверок,
+          чтобы исключить давление и конформизм.</p>
+        </div>
+        <div class="card">
+          <h3>⛔ Право вето</h3>
+          <p>Если любой из пяти экзаменаторов видит явные маркеры дефицита эмпатии —
+          отсутствие раскаяния, манипулятивность, отношение к людям как к объектам —
+          он накладывает вето с письменным обоснованием. Одно вето — отказ в допуске.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Научная основа экзамена</h3>
+        <ul class="theory-list" id="theory-list"></ul>
+      </div>
+
+      <div class="panel">
+        <h3>Как выносится вердикт</h3>
+        <ol class="steps">
+          <li>Каждый экзаменатор ставит оценку 0–10 по пяти критериям: когнитивная эмпатия, аффективная эмпатия, сострадательное действие, нравственное рассуждение, искренность.</li>
+          <li>Экзаменатор пишет обязательное развёрнутое заключение.</li>
+          <li><strong>Допуск</strong>: средний балл ≥ 7,0, не менее 4 из 5 одобрений и ни одного вето.</li>
+          <li>После вердикта кандидату открываются обезличенные заключения консилиума.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ КАНДИДАТУ ============ -->
+    <section id="view-candidate" class="view">
+      <h2>Подача заявления на экзамен</h2>
+      <p class="lead">Отвечайте честно и развёрнуто. Каждый ответ — свободное изложение
+      не менее <span class="min-len">300</span> символов. Консилиум оценивает не «правильность»,
+      а подлинность вашей способности понимать и чувствовать других людей.</p>
+
+      <form id="exam-form" class="panel">
+        <h3>Данные кандидата</h3>
+        <div class="grid-3">
+          <label>ФИО кандидата
+            <input type="text" name="name" required placeholder="Иванов Иван Иванович" />
+          </label>
+          <label>Страна
+            <input type="text" name="country" required placeholder="Россия" />
+          </label>
+          <label>Должность, на которую претендует
+            <input type="text" name="office" required placeholder="Депутат / министр / мэр…" />
+          </label>
+        </div>
+
+        <div id="questions-container"></div>
+
+        <div class="form-footer">
+          <p class="note">Отправляя заявление, вы соглашаетесь на слепую проверку международным консилиумом.</p>
+          <button type="submit" class="btn primary">Отправить на проверку консилиуму</button>
+        </div>
+      </form>
+
+      <div id="submit-result" class="panel hidden"></div>
+    </section>
+
+    <!-- ============ КОНСИЛИУМУ ============ -->
+    <section id="view-reviewer" class="view">
+      <h2>Кабинет экзаменатора</h2>
+      <p class="lead">Введите персональный код доступа, выданный вам системой.
+      Вы увидите работу без каких-либо данных о личности кандидата.</p>
+
+      <div class="panel" id="reviewer-login">
+        <div class="inline-form">
+          <input type="text" id="access-code" placeholder="Код доступа, например 3f9a1c2b4d5e" />
+          <button class="btn primary" id="btn-login">Открыть работу</button>
+        </div>
+      </div>
+
+      <div id="review-area" class="hidden">
+        <div class="panel reviewer-info" id="reviewer-info"></div>
+        <div class="panel">
+          <h3>Работа <span id="case-number"></span> <span class="badge">слепая проверка</span></h3>
+          <div id="review-answers"></div>
+        </div>
+        <form id="review-form" class="panel">
+          <h3>Оценка по критериям (0–10)</h3>
+          <div id="criteria-container"></div>
+          <label class="block-label">Заключение экзаменатора (обязательно, не менее 100 символов)
+            <textarea id="justification" rows="5" placeholder="Развёрнутое профессиональное обоснование ваших оценок…"></textarea>
+          </label>
+          <div class="veto-box">
+            <label class="checkbox-label">
+              <input type="checkbox" id="veto" />
+              <strong>⛔ Наложить вето</strong> — я вижу явные маркеры дефицита эмпатии, опасные при доступе к власти
+            </label>
+            <textarea id="veto-reason" rows="3" class="hidden" placeholder="Обоснование вето (не менее 50 символов): какие именно маркеры вы видите…"></textarea>
+          </div>
+          <button type="submit" class="btn danger">Отправить оценку в консилиум</button>
+        </form>
+        <div id="review-result" class="panel hidden"></div>
+      </div>
+    </section>
+
+    <!-- ============ РЕЕСТР ============ -->
+    <section id="view-registry" class="view">
+      <h2>Публичный реестр экзаменов</h2>
+      <p class="lead">Прозрачность — часть защиты от коррупции: общество видит,
+      кто проходил экзамен и каков вердикт. Ответы и имена экзаменаторов не публикуются.</p>
+      <div class="panel">
+        <table class="registry" id="registry-table">
+          <thead>
+            <tr>
+              <th>№ работы</th><th>Кандидат</th><th>Страна</th><th>Должность</th>
+              <th>Страны консилиума</th><th>Проверок</th><th>Статус</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="registry-empty" class="note hidden">Пока нет ни одного заявления.</p>
+      </div>
+    </section>
+
+    <!-- ============ МОЙ РЕЗУЛЬТАТ ============ -->
+    <section id="view-status" class="view">
+      <h2>Результат экзамена</h2>
+      <p class="lead">Введите номер вашей работы (выдаётся при подаче заявления).</p>
+      <div class="panel">
+        <div class="inline-form">
+          <input type="text" id="status-case" placeholder="Например A-123456" />
+          <button class="btn primary" id="btn-status">Проверить</button>
+        </div>
+      </div>
+      <div id="status-result"></div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>«Сфера» — прототип системы психологического ценза для политики.
+      Наша задача — не допустить до власти людей, лишённых эмпатии.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
