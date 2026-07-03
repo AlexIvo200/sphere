@@ -18,7 +18,11 @@ const { QUESTIONS, CRITERIA, MIN_ANSWER_LENGTH } = require('./questions');
 const { PSYCHOLOGIST_POOL } = require('./psychologists');
 
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.join(__dirname, 'data');
+// На Vercel файловая система read-only, писать можно только в /tmp
+// (данные там эфемерны — для боевой системы нужна внешняя СУБД).
+const DATA_DIR = process.env.VERCEL
+  ? '/tmp/sphere-data'
+  : path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -123,6 +127,16 @@ function sendJson(res, status, obj) {
 }
 
 function readBody(req) {
+  // Среда Vercel парсит JSON-тело заранее и кладёт его в req.body —
+  // повторное чтение потока в этом случае зависнет.
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object') return Promise.resolve(req.body);
+    try {
+      return Promise.resolve(JSON.parse(req.body));
+    } catch {
+      return Promise.reject(new Error('Некорректный JSON'));
+    }
+  }
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (chunk) => {
@@ -172,6 +186,9 @@ function serveStatic(res, urlPath) {
 // ---------------------------------------------------------------------------
 
 async function handleApi(req, res, url) {
+  // В serverless-среде инстансы функции не разделяют память —
+  // перечитываем хранилище на каждый запрос.
+  db = loadDb();
   const route = `${req.method} ${url.pathname}`;
 
   // Вопросы и критерии экзамена
@@ -423,4 +440,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, selectCouncil, computeVerdict };
+module.exports = { server, handleApi, selectCouncil, computeVerdict };
