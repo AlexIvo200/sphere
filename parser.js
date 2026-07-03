@@ -191,6 +191,17 @@
     return m ? clean(m[1]) : '';
   }
 
+  /* ---------- Проценты («под 5 процентов в месяц») ---------- */
+  function parseInterest(text) {
+    const t = normalize(text);
+    const m = t.match(/под\s+(\d+(?:\.\d+)?)\s*(?:%|процент\w*)\s*(?:в|за)?\s*(месяц|мес|год|годовых)?/);
+    if (!m) return null;
+    return {
+      rate: parseFloat(m[1]),
+      period: m[2] && /год/.test(m[2]) ? 'year' : 'month',
+    };
+  }
+
   /* ---------- Всё вместе ---------- */
   function parseInvestment(text, ref) {
     const project = extractProject(text);
@@ -206,10 +217,11 @@
       dueAt: parseWhen(text, ref),
       project,
       task: extractTask(text),
+      interest: parseInterest(text),
     };
   }
 
-  const api = { parseInvestment, parseAmount, parseWhen, parseCurrency, extractName, extractProject, extractTask };
+  const api = { parseInvestment, parseAmount, parseWhen, parseCurrency, extractName, extractProject, extractTask, parseInterest };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.KredoParser = api;
 })(typeof self !== 'undefined' ? self : this);

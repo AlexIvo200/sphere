@@ -25,6 +25,20 @@ function load() {
 }
 function save() {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  // Снимок для сервис-воркера (фоновые напоминания): SW не видит localStorage
+  if ('caches' in window) {
+    const snapshot = {
+      currency: state.investor ? state.investor.currency : '₽',
+      notify: !!state.notify,
+      debtors: state.debtors.map(d => ({
+        name: d.name, dueAt: d.dueAt,
+        remain: remainOf(d),
+      })).filter(d => d.remain > 0),
+    };
+    caches.open('kredo-snapshot')
+      .then(c => c.put('/kredo-snapshot.json', new Response(JSON.stringify(snapshot), { headers: { 'content-type': 'application/json' } })))
+      .catch(() => {});
+  }
 }
 
 /* ---------- Модели ---------- */
@@ -35,7 +49,10 @@ function makeDebtor(data) {
     id: uid(),
     name: data.name.trim(),
     contact: (data.contact || '').trim(),   // телефон / @username
-    amount: Number(data.amount) || 0,        // сколько всего должен
+    amount: Number(data.amount) || 0,        // тело долга
+    interestRate: Number(data.interestRate) || 0,   // % за период
+    interestPeriod: data.interestPeriod || 'month', // month | year
+    interestType: data.interestType || 'simple',    // simple | compound
     projectId: data.projectId || '',
     lentAt: data.lentAt || todayISO(),
     dueAt: data.dueAt || '',
@@ -63,7 +80,22 @@ function fmt(n) {
 }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function paidOf(d) { return d.payments.reduce((s, p) => s + p.amount, 0); }
-function remainOf(d) { return Math.max(0, d.amount - paidOf(d)); }
+
+// Долг с начисленными процентами на сегодня
+function accruedOf(d) {
+  const rate = Number(d.interestRate) || 0;
+  if (rate <= 0 || !d.lentAt) return d.amount;
+  const days = Math.max(0, (new Date(todayISO() + 'T00:00:00') - new Date(d.lentAt + 'T00:00:00')) / 86400000);
+  const periodDays = d.interestPeriod === 'year' ? 365 : 30;
+  const n = days / periodDays; // прошло периодов (дробное)
+  const r = rate / 100;
+  const total = d.interestType === 'compound'
+    ? d.amount * Math.pow(1 + r, n)
+    : d.amount * (1 + r * n);
+  return Math.round(total);
+}
+function interestOf(d) { return Math.max(0, accruedOf(d) - d.amount); }
+function remainOf(d) { return Math.max(0, accruedOf(d) - paidOf(d)); }
 function isPaid(d) { return remainOf(d) <= 0; }
 function daysLeft(dueAt) {
   if (!dueAt) return null;
@@ -345,6 +377,20 @@ function openDebtorForm(id) {
       <label class="field"><span>Сумма долга</span><input id="f-amount" type="number" inputmode="decimal" value="${d ? d.amount : ''}" placeholder="0" /></label>
       <label class="field"><span>Дата возврата</span><input id="f-due" type="date" value="${d ? d.dueAt : ''}" /></label>
     </div>
+    <div class="field-row">
+      <label class="field"><span>Дата займа</span><input id="f-lent" type="date" value="${d ? d.lentAt : todayISO()}" /></label>
+      <label class="field"><span>Процент за период</span><input id="f-rate" type="number" inputmode="decimal" step="0.1" value="${d && d.interestRate ? d.interestRate : ''}" placeholder="0 — без %" /></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Период</span><select id="f-period">
+        <option value="month" ${d && d.interestPeriod === 'month' ? 'selected' : ''}>в месяц</option>
+        <option value="year" ${d && d.interestPeriod === 'year' ? 'selected' : ''}>в год</option>
+      </select></label>
+      <label class="field"><span>Тип</span><select id="f-itype">
+        <option value="simple" ${d && d.interestType === 'simple' ? 'selected' : ''}>простой</option>
+        <option value="compound" ${d && d.interestType === 'compound' ? 'selected' : ''}>сложный (капитализация)</option>
+      </select></label>
+    </div>
     <label class="field"><span>Проект</span><select id="f-project">${projectOptions(d ? d.projectId : '')}</select></label>
     <label class="field"><span>Заметка</span><textarea id="f-note" placeholder="Условия, проценты, договорённости…">${d ? esc(d.note) : ''}</textarea></label>
     <button class="btn btn--primary btn--block" id="f-save">${d ? 'Сохранить' : 'Добавить'}</button>
@@ -358,12 +404,19 @@ function openDebtorForm(id) {
       contact: $('#f-contact', m).value,
       amount: $('#f-amount', m).value,
       dueAt: $('#f-due', m).value,
+      lentAt: $('#f-lent', m).value,
+      interestRate: $('#f-rate', m).value,
+      interestPeriod: $('#f-period', m).value,
+      interestType: $('#f-itype', m).value,
       projectId: $('#f-project', m).value,
       note: $('#f-note', m).value,
     };
     if (d) {
       Object.assign(d, { name: payload.name, contact: payload.contact.trim(), amount: Number(payload.amount) || 0,
-        dueAt: payload.dueAt, projectId: payload.projectId, note: payload.note.trim() });
+        dueAt: payload.dueAt, lentAt: payload.lentAt || d.lentAt,
+        interestRate: Number(payload.interestRate) || 0,
+        interestPeriod: payload.interestPeriod, interestType: payload.interestType,
+        projectId: payload.projectId, note: payload.note.trim() });
     } else {
       state.debtors.push(makeDebtor(payload));
       currentTab = 'debtors';
@@ -421,7 +474,8 @@ function openDebtorDetail(id) {
   const d = state.debtors.find(x => x.id === id);
   if (!d) return;
   const paid = paidOf(d), remain = remainOf(d);
-  const pct = d.amount > 0 ? Math.min(100, Math.round((paid / d.amount) * 100)) : 0;
+  const accrued = accruedOf(d), interest = interestOf(d);
+  const pct = accrued > 0 ? Math.min(100, Math.round((paid / accrued) * 100)) : 0;
   const st = statusOf(d);
   const dl = daysLeft(d.dueAt);
 
@@ -437,7 +491,9 @@ function openDebtorDetail(id) {
     </div>
 
     <div class="card">
-      <div class="kv"><span class="kv__k">Всего долг</span><strong>${fmt(d.amount)}</strong></div>
+      <div class="kv"><span class="kv__k">Тело долга</span><strong>${fmt(d.amount)}</strong></div>
+      ${interest > 0 ? `<div class="kv"><span class="kv__k">Проценты (${d.interestRate}% ${d.interestPeriod === 'year' ? 'в год' : 'в мес'}${d.interestType === 'compound' ? ', капитализация' : ''})</span><span class="amount--pos">+${fmt(interest)}</span></div>
+      <div class="kv"><span class="kv__k">Итого с процентами</span><strong>${fmt(accrued)}</strong></div>` : ''}
       <div class="kv"><span class="kv__k">Возвращено</span><span class="amount--pos">${fmt(paid)}</span></div>
       <div class="kv"><span class="kv__k">Осталось</span><strong>${fmt(remain)}</strong></div>
       ${d.dueAt ? `<div class="kv"><span class="kv__k">Срок</span><span>${fmtDate(d.dueAt)}${dl !== null ? (dl < 0 ? ` · просрочка ${Math.abs(dl)} дн` : ` · через ${dl} дн`) : ''}</span></div>` : ''}
@@ -580,6 +636,11 @@ function openSettings() {
       ${['₽','$','€','₸','грн'].map(c => `<option ${c === cur() ? 'selected' : ''}>${c}</option>`).join('')}
     </select></label>
     <button class="btn btn--primary btn--block" id="s-save">Сохранить</button>
+    <div class="section-title">AI-разбор голоса</div>
+    <label class="field"><span>API-ключ Anthropic (необязательно)</span>
+      <input id="s-aikey" type="password" value="${esc(state.aiKey || '')}" placeholder="sk-ant-…" autocomplete="off" />
+    </label>
+    <p class="muted" style="font-size:12px;margin:2px 2px 0">С ключом фразы разбирает Claude — точнее на любых формулировках. Ключ хранится только на устройстве. Без ключа работает встроенный разбор.</p>
     <div class="section-title">Напоминания</div>
     <button class="btn btn--block" id="s-notify">${state.notify ? '🔔 Напоминания включены — выключить' : '🔔 Включить напоминания о сроках'}</button>
     <p class="muted" style="font-size:12px;margin:6px 2px 0">При открытии приложения предупредим о просрочках и близких сроках.</p>
@@ -594,6 +655,7 @@ function openSettings() {
     const nm = $('#s-name', m).value.trim();
     if (nm) state.investor.name = nm;
     state.investor.currency = $('#s-cur', m).value;
+    state.aiKey = $('#s-aikey', m).value.trim();
     save(); $('#hi-name').textContent = state.investor.name; closeModal(); render(); toast('Сохранено');
   });
   $('#s-notify', m).addEventListener('click', async () => {
@@ -675,12 +737,24 @@ function openVoiceModal() {
     try { rec.start(); } catch (e) { statusEl.textContent = 'Не удалось включить микрофон'; }
   });
 
-  $('#v-parse', m).addEventListener('click', () => {
+  $('#v-parse', m).addEventListener('click', async () => {
     stop();
     const text = textEl.value.trim();
     if (!text) { toast('Скажи или впиши фразу'); return; }
-    const parsed = KredoParser.parseInvestment(text, new Date());
-    openVoiceConfirm(parsed);
+    const btn = $('#v-parse', m);
+    if (state.aiKey) {
+      btn.disabled = true; btn.textContent = '🤖 AI разбирает…';
+      try {
+        const parsed = await aiParse(text);
+        openVoiceConfirm(parsed);
+        return;
+      } catch (e) {
+        toast('AI недоступен, разобрали локально');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Разобрать →';
+      }
+    }
+    openVoiceConfirm(KredoParser.parseInvestment(text, new Date()));
   });
 }
 
@@ -707,6 +781,13 @@ function openVoiceConfirm(p) {
       <label class="field"><span>Валюта</span><select id="c-cur">${['₽','$','€','₸','грн'].map(c => `<option ${c === curSel ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
     </div>
     <label class="field"><span>Срок возврата</span><input id="c-due" type="date" value="${p.dueAt || ''}" /></label>
+    <div class="field-row">
+      <label class="field"><span>Процент за период</span><input id="c-rate" type="number" inputmode="decimal" step="0.1" value="${p.interest ? p.interest.rate : ''}" placeholder="0 — без %" /></label>
+      <label class="field"><span>Период</span><select id="c-period">
+        <option value="month" ${!p.interest || p.interest.period === 'month' ? 'selected' : ''}>в месяц</option>
+        <option value="year" ${p.interest && p.interest.period === 'year' ? 'selected' : ''}>в год</option>
+      </select></label>
+    </div>
     <label class="field"><span>Проект</span><select id="c-proj">${projSelect}</select></label>
     <label class="field"><span>Что должен сделать / заметка</span><textarea id="c-note">${esc(p.task || '')}</textarea></label>
     <button class="btn btn--primary btn--block" id="c-save">✅ Сохранить</button>
@@ -729,6 +810,8 @@ function openVoiceConfirm(p) {
       name,
       amount: $('#c-amount', m).value,
       dueAt: $('#c-due', m).value,
+      interestRate: $('#c-rate', m).value,
+      interestPeriod: $('#c-period', m).value,
       projectId,
       note: $('#c-note', m).value,
     }));
@@ -738,6 +821,63 @@ function openVoiceConfirm(p) {
     render();
     toast('Записано с голоса 🎉');
   });
+}
+
+/* ================= AI-РАЗБОР (Claude API, опционально) ================= */
+/* Работает, только если пользователь ввёл свой API-ключ в настройках.
+   Ключ хранится локально и уходит только на api.anthropic.com. */
+
+const AI_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string', description: 'Имя должника в именительном падеже, пустая строка если не названо' },
+    amount: { type: 'number', description: 'Сумма долга числом, 0 если не названа' },
+    currency: { type: 'string', enum: ['₽', '$', '€', '₸', 'грн', ''], description: 'Валюта, пустая строка если не названа' },
+    dueAt: { type: 'string', description: 'Срок возврата в формате YYYY-MM-DD, пустая строка если не назван' },
+    project: { type: 'string', description: 'Название проекта, пустая строка если не назван' },
+    task: { type: 'string', description: 'Что должник обязался сделать, пустая строка если не сказано' },
+    interestRate: { type: 'number', description: 'Процентная ставка за период, 0 если не названа' },
+    interestPeriod: { type: 'string', enum: ['month', 'year'], description: 'Период ставки' },
+  },
+  required: ['name', 'amount', 'currency', 'dueAt', 'project', 'task', 'interestRate', 'interestPeriod'],
+  additionalProperties: false,
+};
+
+async function aiParse(text) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': state.aiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-8',
+      max_tokens: 1024,
+      system: `Ты разбираешь голосовую заметку инвестора в структуру. Сегодня ${todayISO()}. ` +
+        'Относительные даты («через неделю», «к пятнице», «к 20 числу») переводи в конкретную дату от сегодняшнего дня. ' +
+        'Имя должника ставь в именительный падеж. Если чего-то нет во фразе — пустая строка или 0.',
+      output_config: { format: { type: 'json_schema', schema: AI_SCHEMA } },
+      messages: [{ role: 'user', content: text }],
+    }),
+  });
+  if (!res.ok) throw new Error('api ' + res.status);
+  const data = await res.json();
+  if (data.stop_reason === 'refusal') throw new Error('refusal');
+  const block = (data.content || []).find(b => b.type === 'text');
+  if (!block) throw new Error('empty');
+  const j = JSON.parse(block.text);
+  return {
+    raw: text,
+    name: j.name || '',
+    amount: j.amount || null,
+    currency: j.currency || null,
+    dueAt: j.dueAt || '',
+    project: j.project || '',
+    task: j.task || '',
+    interest: j.interestRate > 0 ? { rate: j.interestRate, period: j.interestPeriod || 'month' } : null,
+  };
 }
 
 /* ================= ГРАФИКИ (canvas, без зависимостей) ================= */
@@ -827,8 +967,21 @@ function remindOnOpen() {
 async function enableNotifications() {
   if (!('Notification' in window)) { toast('Уведомления не поддерживаются'); return false; }
   const perm = await Notification.requestPermission();
-  if (perm === 'granted') { state.notify = true; state.lastNotify = ''; save(); toast('Напоминания включены 🔔'); remindOnOpen(); return true; }
-  toast('Разрешение не выдано'); return false;
+  if (perm !== 'granted') { toast('Разрешение не выдано'); return false; }
+  state.notify = true; state.lastNotify = ''; save();
+  // Фоновая проверка сроков (Chrome/Android, установленная PWA).
+  // Где не поддерживается — остаются напоминания при открытии.
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if ('periodicSync' in reg) {
+      await reg.periodicSync.register('kredo-reminders', { minInterval: 12 * 60 * 60 * 1000 });
+      toast('Фоновые напоминания включены 🔔');
+      return true;
+    }
+  } catch (e) { /* нет разрешения на periodic sync — не страшно */ }
+  toast('Напоминания включены 🔔');
+  remindOnOpen();
+  return true;
 }
 
 /* ---------- прочее ---------- */
